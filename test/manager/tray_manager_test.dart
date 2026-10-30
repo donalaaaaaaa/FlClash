@@ -237,7 +237,7 @@ void main() {
     );
 
     for (var i = 0; i < 2; i++) {
-      container
+      container!
           .read(patchClashConfigProvider.notifier)
           .update((state) => state.copyWith(mixedPort: state.mixedPort + 1));
       await tester.pump();
