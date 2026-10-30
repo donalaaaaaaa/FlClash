@@ -7,6 +7,7 @@ import "time"
 // StartPersistentServer keeps the Core alive while the Windows desktop host
 // disconnects and reconnects to the same named pipe.
 func StartPersistentServer(arg string) {
-	defer releaseOnExit()
-	runPersistentServer(arg, dial, time.Sleep, serve, func() bool { return true })
+	runPersistentServer(arg, func(path string) (ipcConn, error) {
+		return dial(path)
+	}, time.Sleep, servePersistentConnection, func() bool { return true })
 }

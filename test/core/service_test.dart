@@ -103,12 +103,15 @@ void main() {
     verify(() => rpcClient.close()).called(1);
   });
 
-  test('forwards process preservation when closing the UI connection', () async {
-    await service.close(preserveProcess: true);
+  test(
+    'forwards process preservation when closing the UI connection',
+    () async {
+      await service.close(preserveProcess: true);
 
-    verify(() => lifecycle.close(preserveProcess: true)).called(1);
-    verify(() => rpcClient.close()).called(1);
-  });
+      verify(() => lifecycle.close(preserveProcess: true)).called(1);
+      verify(() => rpcClient.close()).called(1);
+    },
+  );
 }
 
 final class _CrashListener with CoreEventListener {

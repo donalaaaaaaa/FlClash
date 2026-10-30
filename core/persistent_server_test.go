@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/metacubex/mihomo/config"
 )
 
 func TestRunPersistentServerRetriesDialAndReconnects(t *testing.T) {
@@ -70,5 +72,21 @@ func TestRunPersistentServerStopsWithoutAnotherDial(t *testing.T) {
 
 	if dials != 1 || serves != 1 {
 		t.Fatalf("dials = %d, serves = %d, want one bounded iteration", dials, serves)
+	}
+}
+
+func TestServePersistentConnectionKeepsCoreStateOnDisconnect(t *testing.T) {
+	withCurrentConfig(t, &config.Config{General: &config.General{}, Controller: &config.Controller{}})
+	wasInit := isInit.Load()
+	isInit.Store(true)
+	t.Cleanup(func() { isInit.Store(wasInit) })
+
+	servePersistentConnection(&fakeConn{})
+
+	if !isInit.Load() {
+		t.Error("persistent serve released the Core on a host disconnect")
+	}
+	if currentConfig == nil {
+		t.Error("persistent serve cleared currentConfig on a host disconnect")
 	}
 }

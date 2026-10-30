@@ -8,6 +8,7 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <ras.h>
+#include <raserror.h>
 #include <shellapi.h>
 #include <winhttp.h>
 #include <wininet.h>

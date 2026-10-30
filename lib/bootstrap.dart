@@ -179,9 +179,7 @@ class Bootstrap {
       return;
     }
     await _showCrashRecoveryTip();
-    await _container
-        .read(systemActionProvider.notifier)
-        .syncWindowsTrayState();
+    await _container.read(systemActionProvider.notifier).syncWindowsTrayState();
     await _container.read(coreActionProvider.notifier).startCore();
     if (!_bootDecision.isDegraded) {
       await _container.read(setupActionProvider.notifier).initStatus();

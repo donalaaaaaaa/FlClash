@@ -169,8 +169,6 @@ func send(data []byte) {
 }
 
 func StartServer(arg string) {
-	defer releaseOnExit()
-
 	dialed, err := dial(arg)
 	if err != nil {
 		panic(err.Error())
@@ -202,6 +200,20 @@ func runPersistentServer(
 }
 
 func serve(dialed ipcConn) {
+	serveConnection(dialed, true)
+}
+
+// servePersistentConnection closes only the disconnected IPC connection. The
+// Windows persistent server keeps the Core state for a host that reconnects;
+// process termination still calls releaseOnExit from ExitOnTermination.
+func servePersistentConnection(dialed ipcConn) {
+	serveConnection(dialed, false)
+}
+
+func serveConnection(dialed ipcConn, release bool) {
+	if release {
+		defer releaseOnExit()
+	}
 	defer func() {
 		connMu.Lock()
 		c := conn

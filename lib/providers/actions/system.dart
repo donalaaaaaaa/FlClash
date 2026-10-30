@@ -94,9 +94,7 @@ class SystemAction extends _$SystemAction {
 
   @protected
   Future<void> closeCore() async {
-    await _core.close(
-      preserveProcess: system.isWindows && !safeModeBuild,
-    );
+    await _core.close(preserveProcess: system.isWindows && !safeModeBuild);
     commonPrint.log('exit');
   }
 

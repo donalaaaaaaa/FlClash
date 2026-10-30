@@ -131,11 +131,9 @@ class _TrayManagerState extends ConsumerState<TrayManager> {
       bypassDomains: state.bassDomain,
     );
     final temporaryPath = '$stateFilePath.${uniqueId}.tmp';
-    await File(temporaryPath).writeAsString(
-      contents,
-      encoding: utf8,
-      flush: true,
-    );
+    await File(
+      temporaryPath,
+    ).writeAsString(contents, encoding: utf8, flush: true);
     await File(temporaryPath).rename(stateFilePath);
 
     if (_standaloneTrayStarted) {
