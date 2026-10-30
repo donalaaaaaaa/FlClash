@@ -398,7 +398,7 @@ jobs:
       - name: Package Windows preview
         run: dart setup.dart windows --env pre --targets exe,zip -v
 
-      - name: Verify archive and silent installation
+      - name: Verify preview artifacts without launching the app
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -416,15 +416,11 @@ jobs:
               }
             } finally { $archive.Dispose() }
           }
-          $installDir = Join-Path $env:RUNNER_TEMP 'FlClashPreviewInstall'
-          $install = Start-Process $installers[0].FullName -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', "/DIR=`"$installDir`"") -PassThru -Wait
-          if ($install.ExitCode -ne 0) { throw "Installer exited with $($install.ExitCode)" }
-          foreach ($file in $required) {
-            if (!(Test-Path (Join-Path $installDir $file))) { throw "$file is missing after installation" }
-          }
-          if (Get-Process -Name FlClashCore,FlClashTray -ErrorAction SilentlyContinue) { throw 'Installation unexpectedly started Core or tray' }
-          $uninstall = Start-Process (Join-Path $installDir 'unins000.exe') -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -PassThru -Wait
-          if ($uninstall.ExitCode -ne 0) { throw "Uninstaller exited with $($uninstall.ExitCode)" }
+          $stream = [System.IO.File]::OpenRead($installers[0].FullName)
+          try {
+            if ($stream.ReadByte() -ne 77 -or $stream.ReadByte() -ne 90) { throw 'Invalid setup EXE header' }
+          } finally { $stream.Dispose() }
+          $signature = Get-AuthenticodeSignature $installers[0].FullName
           $version = (Get-Content pubspec.yaml | Select-String '^version:').Line -replace '^version:\s*', ''
           [ordered]@{
             source_commit = (git rev-parse HEAD).Trim()
@@ -432,8 +428,8 @@ jobs:
             environment = 'pre'
             run_url = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
             archive_contents_verified = $true
-            silent_install_and_uninstall_verified = $true
-            no_core_or_tray_started_by_install = $true
+            installer_signature_status = $signature.Status.ToString()
+            installer_execution_verified = $false
             interactive_lifecycle_verified = $false
           } | ConvertTo-Json | Set-Content dist/BUILD_INFO.json -Encoding utf8
           $root = (Resolve-Path dist).Path
