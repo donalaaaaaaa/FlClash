@@ -39,7 +39,8 @@ class SystemAction extends _$SystemAction {
   Future<void> cleanupExitResources(bool needSave) async {
     final saveOperation = needSave ? _savePreferencesSafely() : null;
     final tray = trayPort;
-    if (tray != null) {
+    final independentWindowsTray = system.isWindows && !safeModeBuild;
+    if (tray != null && !independentWindowsTray) {
       await tray.shutdown().onError<Object>((error, stackTrace) {
         commonPrint.log(
           'Tray shutdown failed: ${compactError(error)}',
@@ -51,7 +52,7 @@ class SystemAction extends _$SystemAction {
       ?saveOperation,
       bootGuard.markClosed(),
       if (systemDnsCoordinator != null) systemDnsCoordinator!.shutdown(),
-      ?systemProxyQueue?.close(),
+      if (!independentWindowsTray) ?systemProxyQueue?.close(),
     ]);
   }
 
@@ -93,7 +94,9 @@ class SystemAction extends _$SystemAction {
 
   @protected
   Future<void> closeCore() async {
-    await _core.close();
+    await _core.close(
+      preserveProcess: system.isWindows && !safeModeBuild,
+    );
     commonPrint.log('exit');
   }
 
@@ -104,7 +107,8 @@ class SystemAction extends _$SystemAction {
   }
 
   Future<void> handleClose([bool exit = true]) async {
-    if (ref.read(appSettingProvider).minimizeOnExit || !exit) {
+    if (!system.isWindows &&
+        (ref.read(appSettingProvider).minimizeOnExit || !exit)) {
       if (system.isDesktop) {
         await _savePreferencesSafely();
       }
@@ -144,6 +148,42 @@ class SystemAction extends _$SystemAction {
     ref
         .read(appSettingProvider.notifier)
         .update((state) => state.copyWith(autoLaunch: !state.autoLaunch));
+  }
+
+  Future<void> syncWindowsTrayState() async {
+    if (!system.isWindows || safeModeBuild) return;
+    try {
+      final homePath = await appPath.homeDirPath;
+      final stateFile = File(
+        '$homePath${Platform.pathSeparator}FlClashTray.state',
+      );
+      if (!await stateFile.exists()) return;
+      final lines = await stateFile.readAsLines(encoding: utf8);
+      if (lines.length < 3) return;
+      final port = int.tryParse(lines[0].trim());
+      final desired = lines[1].trim();
+      final count = int.tryParse(lines[2].trim());
+      if (port == null ||
+          port < 1 ||
+          port > 65535 ||
+          (desired != '0' && desired != '1') ||
+          count == null ||
+          count < 0 ||
+          lines.length < count + 3) {
+        return;
+      }
+      final systemProxy = desired == '1';
+      if (ref.read(networkSettingProvider).systemProxy != systemProxy) {
+        ref
+            .read(networkSettingProvider.notifier)
+            .update((state) => state.copyWith(systemProxy: systemProxy));
+      }
+    } catch (error) {
+      commonPrint.log(
+        'Could not restore Windows tray proxy state: ${compactError(error)}',
+        logLevel: LogLevel.warning,
+      );
+    }
   }
 
   Future<void> updateTray() async {

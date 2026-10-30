@@ -17,7 +17,7 @@ abstract interface class DesktopCoreLifecycleController {
 
   Future<CoreLifecycleResult> stop();
 
-  Future<CoreLifecycleResult> close();
+  Future<CoreLifecycleResult> close({bool preserveProcess = false});
 
   Future<DesktopCoreSession> waitUntilRunning(Duration timeout);
 }
@@ -152,6 +152,7 @@ final class DesktopCoreLifecycle implements DesktopCoreLifecycleController {
   );
   Completer<void> _intentChanged = Completer<void>();
   bool _terminalRequested = false;
+  bool _preserveProcessOnClose = false;
 
   factory DesktopCoreLifecycle({
     required DesktopCoreTransport Function() transportFactory,
@@ -202,11 +203,12 @@ final class DesktopCoreLifecycle implements DesktopCoreLifecycleController {
   Future<CoreLifecycleResult> stop() => _submit(_LifecycleTarget.stopped);
 
   @override
-  Future<CoreLifecycleResult> close() {
+  Future<CoreLifecycleResult> close({bool preserveProcess = false}) {
     final closeResult = _closeResult;
     if (closeResult != null) {
       return closeResult;
     }
+    _preserveProcessOnClose = preserveProcess;
     final result = _submit(_LifecycleTarget.closed);
     _closeResult = result;
     return result;
@@ -345,11 +347,16 @@ final class DesktopCoreLifecycle implements DesktopCoreLifecycleController {
       case _LifecycleTarget.closed:
         final session = _session;
         if (session != null) {
-          await _stopSession(
-            session,
-            intent.revision,
-            allowUnconfirmedExit: true,
-          );
+          if (_preserveProcessOnClose &&
+              session.owner == CoreProcessOwner.helper) {
+            _clearSession(session);
+          } else {
+            await _stopSession(
+              session,
+              intent.revision,
+              allowUnconfirmedExit: true,
+            );
+          }
         }
         await _transportSubscription.cancel();
         await _transport.close();

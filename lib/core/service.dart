@@ -84,13 +84,13 @@ class CoreService extends CoreHandlerInterface {
   Future<CoreLifecycleResult> stop() => _lifecycle.stop();
 
   @override
-  Future<CoreLifecycleResult> close() {
-    return _closeOperation ??= _close();
+  Future<CoreLifecycleResult> close({bool preserveProcess = false}) {
+    return _closeOperation ??= _close(preserveProcess: preserveProcess);
   }
 
-  Future<CoreLifecycleResult> _close() async {
+  Future<CoreLifecycleResult> _close({required bool preserveProcess}) async {
     try {
-      return await _lifecycle.close();
+      return await _lifecycle.close(preserveProcess: preserveProcess);
     } finally {
       await _rpcClient.close();
       await _crashSubscription.cancel();

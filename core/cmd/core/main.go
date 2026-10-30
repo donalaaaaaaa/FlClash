@@ -15,5 +15,5 @@ func main() {
 		os.Exit(1)
 	}
 	go core.ExitOnTermination()
-	core.StartServer(args[1])
+	core.StartPersistentServer(args[1])
 }

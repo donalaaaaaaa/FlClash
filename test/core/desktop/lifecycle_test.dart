@@ -64,6 +64,38 @@ void main() {
     },
   );
 
+  test('closing with preserveProcess detaches a Helper-owned Core', () async {
+    final transport = FakeDesktopCoreTransport();
+    final helper = FakeLauncher(owner: CoreProcessOwner.helper, pid: 84);
+    final lifecycle = _createLifecycle(
+      transport: transport,
+      resolver: MutableLauncherResolver(helper),
+    );
+    await _startConnected(lifecycle, transport, helper, pid: 84);
+
+    final result = await lifecycle.close(preserveProcess: true);
+
+    expect(result.outcome, CoreLifecycleOutcome.applied);
+    expect(helper.lease.stopCount, 0);
+    expect(transport.closeCount, 1);
+    expect(lifecycle.state, isA<DesktopCoreClosed>());
+  });
+
+  test('preserveProcess still stops a directly owned Core', () async {
+    final transport = FakeDesktopCoreTransport();
+    final direct = FakeLauncher(owner: CoreProcessOwner.direct, pid: 42);
+    final lifecycle = _createLifecycle(
+      transport: transport,
+      resolver: MutableLauncherResolver(direct),
+    );
+    await _startConnected(lifecycle, transport, direct, pid: 42);
+
+    await lifecycle.close(preserveProcess: true);
+
+    expect(direct.lease.stopCount, 1);
+    expect(lifecycle.state, isA<DesktopCoreClosed>());
+  });
+
   test('concurrent restarts coalesce behind one replacement', () async {
     final transport = FakeDesktopCoreTransport();
     final direct = FakeLauncher(owner: CoreProcessOwner.direct, pid: 42);

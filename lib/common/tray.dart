@@ -294,4 +294,6 @@ class AppTray implements TrayPort {
   }
 }
 
-final appTray = system.isDesktop ? AppTray() : null;
+final appTray = system.isDesktop && !(system.isWindows && !safeModeBuild)
+    ? AppTray()
+    : null;

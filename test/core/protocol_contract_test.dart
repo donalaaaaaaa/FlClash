@@ -25,7 +25,7 @@ class _RecordingCoreHandler extends CoreHandlerInterface {
   Future<CoreLifecycleResult> stop() => start();
 
   @override
-  Future<CoreLifecycleResult> close() => start();
+  Future<CoreLifecycleResult> close({bool preserveProcess = false}) => start();
 
   @override
   Future<T?> invokeMethod<T>({

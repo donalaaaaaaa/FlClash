@@ -16,7 +16,9 @@ const browserUa =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const packageName = 'com.follow.clash';
 final unixSocketPath = '/tmp/FlClashSocket_${Random().nextInt(10000)}.sock';
-final windowsPipeName = '\\\\.\\pipe\\FlClashCore_${_randomPipeId()}';
+const _residentWindowsPipeId = 'a10f7e5b8c6d4a3291f0e5d7c3b2a104';
+final windowsPipeName =
+    '\\\\.\\pipe\\FlClashCore_${safeModeBuild ? _randomPipeId() : _residentWindowsPipeId}';
 const helperPort = 47890;
 const helperPortKey =
     'SYSTEM\\CurrentControlSet\\Services\\$appHelperService\\Runtime';

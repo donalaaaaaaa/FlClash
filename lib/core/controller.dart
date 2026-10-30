@@ -47,7 +47,8 @@ class CoreController {
 
   Future<CoreLifecycleResult> stop() => _interface.stop();
 
-  Future<CoreLifecycleResult> close() => _interface.close();
+  Future<CoreLifecycleResult> close({bool preserveProcess = false}) =>
+      _interface.close(preserveProcess: preserveProcess);
 
   static Future<void> ensureHomeDir() async {
     final homePath = await appPath.homeDirPath;

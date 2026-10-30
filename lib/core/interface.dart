@@ -14,7 +14,7 @@ mixin CoreInterface {
 
   Future<CoreLifecycleResult> stop();
 
-  Future<CoreLifecycleResult> close();
+  Future<CoreLifecycleResult> close({bool preserveProcess = false});
 
   Future<bool> init(InitParams params);
 

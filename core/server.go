@@ -169,6 +169,8 @@ func send(data []byte) {
 }
 
 func StartServer(arg string) {
+	defer releaseOnExit()
+
 	dialed, err := dial(arg)
 	if err != nil {
 		panic(err.Error())
@@ -176,8 +178,30 @@ func StartServer(arg string) {
 	serve(dialed)
 }
 
+const persistentRetryDelay = time.Second
+
+// runPersistentServer keeps the core alive while its desktop IPC peer is
+// temporarily disconnected. The callbacks make the retry policy testable
+// without creating a real platform pipe or waiting in a test.
+func runPersistentServer(
+	arg string,
+	dialFn func(string) (ipcConn, error),
+	sleepFn func(time.Duration),
+	serveFn func(ipcConn),
+	keepRunning func() bool,
+) {
+	for keepRunning() {
+		dialed, err := dialFn(arg)
+		if err != nil {
+			sleepFn(persistentRetryDelay)
+			continue
+		}
+		serveFn(dialed)
+		sleepFn(persistentRetryDelay)
+	}
+}
+
 func serve(dialed ipcConn) {
-	defer releaseOnExit()
 	defer func() {
 		connMu.Lock()
 		c := conn

@@ -103,7 +103,7 @@ class CoreLib extends CoreHandlerInterface {
   }
 
   @override
-  Future<CoreLifecycleResult> close() {
+  Future<CoreLifecycleResult> close({bool preserveProcess = false}) {
     return _closeOperation ??= _close();
   }
 

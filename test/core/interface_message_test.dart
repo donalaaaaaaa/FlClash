@@ -28,7 +28,8 @@ class _SilentCore extends CoreHandlerInterface {
   Future<CoreLifecycleResult> stop() async => _unused;
 
   @override
-  Future<CoreLifecycleResult> close() async => _unused;
+  Future<CoreLifecycleResult> close({bool preserveProcess = false}) async =>
+      _unused;
 }
 
 const _unused = CoreLifecycleResult(

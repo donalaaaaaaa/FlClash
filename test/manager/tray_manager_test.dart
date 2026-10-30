@@ -3,7 +3,8 @@ import 'dart:async';
 import 'package:fl_clash/common/app_localizations.dart';
 import 'package:fl_clash/l10n/l10n.dart';
 import 'package:fl_clash/manager/locale_manager.dart';
-import 'package:fl_clash/manager/tray_manager.dart';
+import 'package:fl_clash/manager/tray_manager.dart'
+    show TrayManager, serializeWindowsTrayState;
 import 'package:fl_clash/providers/providers.dart';
 import 'package:fl_clash/state.dart';
 import 'package:material_ui/material_ui.dart';
@@ -52,6 +53,17 @@ class _SlowFirstFailureSystemAction extends SystemAction {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('serializes standalone Windows tray state as UTF-8 lines', () {
+    expect(
+      serializeWindowsTrayState(
+        port: 7890,
+        systemProxy: true,
+        bypassDomains: ['localhost\n', '例子\r\n', 'plain'],
+      ),
+      '7890\n1\n3\nlocalhost\n例子\nplain',
+    );
+  });
 
   late ProviderContainer container;
   late List<String> windowCalls;

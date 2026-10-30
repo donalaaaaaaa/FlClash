@@ -33,7 +33,9 @@ void main() {
     when(() => lifecycle.start()).thenAnswer((_) async => result);
     when(() => lifecycle.restart()).thenAnswer((_) async => result);
     when(() => lifecycle.stop()).thenAnswer((_) async => result);
-    when(() => lifecycle.close()).thenAnswer((_) async => result);
+    when(
+      () => lifecycle.close(preserveProcess: any(named: 'preserveProcess')),
+    ).thenAnswer((_) async => result);
     when(() => rpcClient.close()).thenAnswer((_) async {});
     service = CoreService.forTesting(
       lifecycle: lifecycle,
@@ -97,7 +99,14 @@ void main() {
 
     expect(await first, same(result));
     expect(await second, same(result));
-    verify(() => lifecycle.close()).called(1);
+    verify(() => lifecycle.close(preserveProcess: false)).called(1);
+    verify(() => rpcClient.close()).called(1);
+  });
+
+  test('forwards process preservation when closing the UI connection', () async {
+    await service.close(preserveProcess: true);
+
+    verify(() => lifecycle.close(preserveProcess: true)).called(1);
     verify(() => rpcClient.close()).called(1);
   });
 }
