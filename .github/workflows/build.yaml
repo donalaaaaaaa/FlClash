@@ -7,6 +7,15 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      windows_package:
+        description: Build Windows x64 preview artifacts without publishing
+        type: boolean
+        default: false
+      source_ref:
+        description: Source commit or branch for the Windows preview
+        type: string
+        default: feat/windows-on-demand-core-tray
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -25,7 +34,7 @@ jobs:
     name: Dart
     # A private copy pays for its Actions minutes, so it runs the checks only when
     # started by hand.
-    if: &checks github.event_name == 'workflow_dispatch' || !github.event.repository.private
+    if: &checks (github.event_name == 'workflow_dispatch' || !github.event.repository.private) && !inputs.windows_package
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -101,7 +110,7 @@ jobs:
 
   desktop:
     name: Desktop ${{ matrix.platform }}
-    if: (github.event_name == 'workflow_dispatch' || !github.event.repository.private) && !(github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+    if: (github.event_name == 'workflow_dispatch' || !github.event.repository.private) && !(github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) && !inputs.windows_package
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -321,6 +330,126 @@ jobs:
 
       - name: Run Windows service tests
         run: cargo test --manifest-path services/helper/Cargo.toml --features windows-service
+
+  windows-preview:
+    name: Windows x64 preview package
+    if: github.event_name == 'workflow_dispatch' && inputs.windows_package
+    permissions:
+      contents: read
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - name: Enable git long paths
+        run: git config --global core.longpaths true
+
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref }}
+          submodules: recursive
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: core/go.sum
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            services/helper
+            plugins/rust_api/rust
+          cache-directories: .dart_tool/hooks_runner
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Locate Inno Setup
+        shell: pwsh
+        run: |
+          $inno = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6'
+          if (!(Test-Path (Join-Path $inno 'ISCC.exe'))) { throw 'Inno Setup 6 is missing' }
+          $inno | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Fetch CA certificates
+        shell: bash
+        env:
+          CA_BUNDLE: cacert-2026-09-25.pem
+          CA_BUNDLE_SHA256: a41b5d356aea97a529fe27e0f7316d2f9d946d75927476cf9cf1b90637d00505
+        run: |
+          bundle=core/Clash.Meta/component/ca/ca-certificates.crt
+          curl -fsSL --retry 3 -o "$bundle" "https://curl.se/ca/$CA_BUNDLE"
+          echo "$CA_BUNDLE_SHA256  $bundle" | sha256sum -c -
+
+      - name: Test Windows Helper
+        run: cargo test --manifest-path services/helper/Cargo.toml --features windows-service
+
+      - name: Test desktop lifecycle
+        run: flutter test test/core/desktop/lifecycle_test.dart test/core/service_test.dart test/core/protocol_contract_test.dart test/manager/tray_manager_test.dart test/providers/system_action_test.dart
+
+      - name: Package Windows preview
+        run: dart setup.dart windows --env pre --targets exe,zip -v
+
+      - name: Verify archive and silent installation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $required = @('FlClash.exe', 'FlClashCore.exe', 'FlClashHelperService.exe', 'FlClashTray.exe', 'flutter_windows.dll')
+          $zips = @(Get-ChildItem dist -Recurse -File -Filter '*.zip')
+          $installers = @(Get-ChildItem dist -Recurse -File -Filter '*-setup.exe')
+          if ($zips.Count -eq 0 -or $installers.Count -ne 1) { throw 'Expected portable ZIP and one setup EXE' }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          foreach ($zip in $zips) {
+            $archive = [System.IO.Compression.ZipFile]::OpenRead($zip.FullName)
+            try {
+              $names = @($archive.Entries | ForEach-Object { $_.Name })
+              foreach ($file in $required) {
+                if ($names -notcontains $file) { throw "$file is missing from $($zip.Name)" }
+              }
+            } finally { $archive.Dispose() }
+          }
+          $installDir = Join-Path $env:RUNNER_TEMP 'FlClashPreviewInstall'
+          $install = Start-Process $installers[0].FullName -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', "/DIR=`"$installDir`"") -PassThru -Wait
+          if ($install.ExitCode -ne 0) { throw "Installer exited with $($install.ExitCode)" }
+          foreach ($file in $required) {
+            if (!(Test-Path (Join-Path $installDir $file))) { throw "$file is missing after installation" }
+          }
+          if (Get-Process -Name FlClashCore,FlClashTray -ErrorAction SilentlyContinue) { throw 'Installation unexpectedly started Core or tray' }
+          $uninstall = Start-Process (Join-Path $installDir 'unins000.exe') -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -PassThru -Wait
+          if ($uninstall.ExitCode -ne 0) { throw "Uninstaller exited with $($uninstall.ExitCode)" }
+          $version = (Get-Content pubspec.yaml | Select-String '^version:').Line -replace '^version:\s*', ''
+          [ordered]@{
+            source_commit = (git rev-parse HEAD).Trim()
+            app_version = $version
+            environment = 'pre'
+            run_url = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+            archive_contents_verified = $true
+            silent_install_and_uninstall_verified = $true
+            no_core_or_tray_started_by_install = $true
+            interactive_lifecycle_verified = $false
+          } | ConvertTo-Json | Set-Content dist/BUILD_INFO.json -Encoding utf8
+          $root = (Resolve-Path dist).Path
+          Get-ChildItem dist -Recurse -File | Where-Object { $_.Name -ne 'SHA256SUMS' } | Sort-Object FullName | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            $relative = $_.FullName.Substring($root.Length + 1).Replace('\', '/')
+            "$hash  $relative"
+          } | Set-Content dist/SHA256SUMS -Encoding utf8
+
+      - name: Upload preview artifacts only
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-preview-amd64-${{ github.run_id }}
+          path: ./dist
+          if-no-files-found: error
+          retention-days: 14
 
   build:
     # Releases publish where the release links point: the public repository.
