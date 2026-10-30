@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:fl_clash/common/app_localizations.dart';
+import 'package:fl_clash/common/constant.dart';
 import 'package:fl_clash/l10n/l10n.dart';
 import 'package:fl_clash/manager/locale_manager.dart';
 import 'package:fl_clash/manager/tray_manager.dart'
@@ -65,8 +67,9 @@ void main() {
     );
   });
 
-  late ProviderContainer container;
+  ProviderContainer? container;
   late List<String> windowCalls;
+  final usesStandaloneWindowsTray = Platform.isWindows && !safeModeBuild;
 
   setUpAll(() async {
     await AppLocalizations.load(const Locale('en'));
@@ -90,7 +93,8 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
       ..setMockMethodCallHandler(_trayChannel, null)
       ..setMockMethodCallHandler(_windowChannel, null);
-    container.dispose();
+    container?.dispose();
+    container = null;
   });
 
   Future<void> emitTrayEvent(String event, [Object? arguments]) async {
@@ -114,10 +118,10 @@ void main() {
         ),
       ],
     );
-    globalState.container = container;
+    globalState.container = container!;
     await tester.pumpWidget(
       UncontrolledProviderScope(
-        container: container,
+        container: container!,
         child: const MaterialApp(home: TrayManager(child: SizedBox.shrink())),
       ),
     );
@@ -130,7 +134,7 @@ void main() {
   ) async {
     await tester.pumpWidget(
       UncontrolledProviderScope(
-        container: container,
+        container: container!,
         child: MaterialApp(
           locale: locale,
           localizationsDelegates: const [
@@ -164,7 +168,11 @@ void main() {
     // ends the test with no pending timer.
     await tester.pump(const Duration(seconds: 1));
 
-    expect(windowCalls, containsAll(<String>['show', 'focus']));
+    if (usesStandaloneWindowsTray) {
+      expect(windowCalls, isEmpty);
+    } else {
+      expect(windowCalls, containsAll(<String>['show', 'focus']));
+    }
   });
 
   testWidgets('a menu request is forwarded to the tray', (tester) async {
@@ -180,12 +188,15 @@ void main() {
     await pumpTrayManager(tester);
     _RecordingSystemAction.updateTrayCount = 0;
 
-    container
+    container!
         .read(patchClashConfigProvider.notifier)
         .update((state) => state.copyWith(mixedPort: state.mixedPort + 1));
     await tester.pumpAndSettle();
 
-    expect(_RecordingSystemAction.updateTrayCount, 1);
+    expect(
+      _RecordingSystemAction.updateTrayCount,
+      usesStandaloneWindowsTray ? 0 : 1,
+    );
   });
 
   testWidgets('an unchanged tray state does not touch the tray', (
@@ -194,7 +205,7 @@ void main() {
     await pumpTrayManager(tester);
     _RecordingSystemAction.updateTrayCount = 0;
 
-    container
+    container!
         .read(patchClashConfigProvider.notifier)
         .update((state) => state.copyWith(mixedPort: state.mixedPort));
     await tester.pumpAndSettle();
@@ -207,7 +218,7 @@ void main() {
   ) async {
     await pumpTrayManager(tester, systemAction: _FailingSystemAction.new);
 
-    container
+    container!
         .read(patchClashConfigProvider.notifier)
         .update((state) => state.copyWith(mixedPort: state.mixedPort + 1));
     await tester.pumpAndSettle();
@@ -231,12 +242,18 @@ void main() {
           .update((state) => state.copyWith(mixedPort: state.mixedPort + 1));
       await tester.pump();
     }
-    expect(_SlowFirstFailureSystemAction.updateTrayCount, 1);
+    expect(
+      _SlowFirstFailureSystemAction.updateTrayCount,
+      usesStandaloneWindowsTray ? 0 : 1,
+    );
 
     _SlowFirstFailureSystemAction.firstUpdate.complete();
     await tester.pumpAndSettle();
 
-    expect(_SlowFirstFailureSystemAction.updateTrayCount, 2);
+    expect(
+      _SlowFirstFailureSystemAction.updateTrayCount,
+      usesStandaloneWindowsTray ? 0 : 2,
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -250,15 +267,21 @@ void main() {
         systemActionProvider.overrideWith(_RecordingSystemAction.new),
       ],
     );
-    globalState.container = container;
+    globalState.container = container!;
     await pumpLocalizedTrayManager(tester, const Locale('en'));
     _RecordingSystemAction.updateTrayCount = 0;
     _RecordingSystemAction.updateTrayLocales.clear();
 
     await pumpLocalizedTrayManager(tester, const Locale('zh', 'CN'));
 
-    expect(_RecordingSystemAction.updateTrayCount, 1);
-    expect(_RecordingSystemAction.updateTrayLocales, <String>['zh_CN']);
+    expect(
+      _RecordingSystemAction.updateTrayCount,
+      usesStandaloneWindowsTray ? 0 : 1,
+    );
+    expect(
+      _RecordingSystemAction.updateTrayLocales,
+      usesStandaloneWindowsTray ? isEmpty : <String>['zh_CN'],
+    );
   });
 
   testWidgets('the locale a language switch starts from does not push twice', (
@@ -270,7 +293,7 @@ void main() {
         systemActionProvider.overrideWith(_RecordingSystemAction.new),
       ],
     );
-    globalState.container = container;
+    globalState.container = container!;
     await pumpLocalizedTrayManager(tester, const Locale('en'));
     _RecordingSystemAction.updateTrayCount = 0;
 
